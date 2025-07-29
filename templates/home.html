@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Moving Square</title>
+    <style>
+        #character {
+            position: absolute;
+            top: 100px;
+            left: 100px;
+            width: 100px;
+            height: 100px;
+            background-color: teal;
+            text-align: center;
+            color: white;
+            font-weight: bold;
+            border-radius: 10px;
+        }
+        #character-name {
+            color: teal;
+            position: absolute;
+            top: -25px;
+            width: 100%;
+            text-align: center;
+        }
+        button {
+            margin-top: 30px;
+            background-color: white;
+            color: teal;
+            border: 1px solid teal;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="character">
+        <div id="character-name">{{index . "Name"}}</div>
+        <button type="button" onclick="changeName()">Change Name</button>
+    </div>
+
+    <script>
+        const character = document.getElementById("character");
+        let x = 100, y = 100;
+
+        document.addEventListener("keydown", e => {
+            const step = 10;
+            if (e.key === "ArrowLeft") x -= step;
+            if (e.key === "ArrowRight") x += step;
+            if (e.key === "ArrowUp") y -= step;
+            if (e.key === "ArrowDown") y += step;
+            character.style.left = x + "px";
+            character.style.top = y + "px";
+        });
+
+        function changeName() {
+            const newName = prompt("Enter new name:");
+            if (newName) {
+                window.location.href = "/change-name?name=" + encodeURIComponent(newName);
+            }
+        }
+    </script>
+</body>
+</html>
