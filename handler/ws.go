@@ -84,7 +84,7 @@ func (c *Client) writeLoop() {
 
 func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: false, // safe for local dev
+		InsecureSkipVerify: true, // safe for local dev
 	})
 	if err != nil {
 		log.Println("WebSocket accept error:", err)
@@ -166,7 +166,7 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				chars = append(chars, c)
 			}
-			client.send <- WSMessage{Type: "player", Data: chars}
+			client.send <- WSMessage{Type: "players", Data: chars}
 
 		}
 	}
