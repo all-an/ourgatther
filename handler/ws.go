@@ -132,7 +132,7 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 		case "create":
 			name := req.Data.(map[string]interface{})["name"].(string)
 			color := []string{
-				"teal", "tomato", "orange", "green", "blue", "gold", "pink",
+				"teal", "tomato", "orange", "green", "gold", "pink",
 				"cyan", "magenta", "lime", "coral", "brown", "orchid",
 				"lightblue", "lightgreen", "khaki", "peachpuff", "lavender"}[rand.Intn(18)]
 

@@ -122,10 +122,10 @@
     const y = parseInt(div.style.top);
 
     let newX = x, newY = y;
-    if (e.key === "ArrowUp") newY -= 10;
-    if (e.key === "ArrowDown") newY += 10;
-    if (e.key === "ArrowLeft") newX -= 10;
-    if (e.key === "ArrowRight") newX += 10;
+    if (e.key === "ArrowUp") newY -= 40;
+    if (e.key === "ArrowDown") newY += 40;
+    if (e.key === "ArrowLeft") newX -= 40;
+    if (e.key === "ArrowRight") newX += 40;
 
     socket.send(JSON.stringify({ type: "move", data: { id: myId, x: newX, y: newY } }));
   });
