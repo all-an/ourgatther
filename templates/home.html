@@ -1,90 +1,132 @@
+<!-- templates/home.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <title>Multiplayer Characters</title>
-    <style>
-        .character {
-            position: absolute;
-            width: 100px;
-            height: 100px;
-            background: teal;
-            color: white;
-            text-align: center;
-            border-radius: 10px;
-        }
-        .character-name {
-            position: absolute;
-            top: -20px;
-            width: 100%;
-            text-align: center;
-            color: teal;
-            font-weight: bold;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Ourgatther</title>
+  <style>
+    /* Example embedded CSS */
+    #game {
+      width: 800px;
+      height: 600px;
+      position: relative;
+    }
+    .character {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      text-align: center;
+      font-size: 12px;
+    }
+  </style>
 </head>
 <body>
-    <button type="button" onclick="window.location.href='/create-character'">Create Character</button>
-    <div id="game"></div>
+  <div id="top-buttons">
+    <button onclick="createCharacter()">Create Character</button><i><< Create a character here !</i>
+  </div>
+  <i>Use the arrow keys to move your character. ← ↑ → ↓  (keep pressing)</i>
+  <br>
+  <i>Press the Control button to control a character. (press again if needed)</i>
+  <div id="game"></div>
 
-    <script>
-        let myId = null;
-        const game = document.getElementById("game");
-        let characters = {};
+  <script>
+    const socket = new WebSocket("ws://localhost:8080/ws");
 
-        function updateUI(charList) {
-            game.innerHTML = "";
-            charList.forEach(c => {
-                const div = document.createElement("div");
-                div.className = "character";
-                div.style.left = c.x + "px";
-                div.style.top = c.y + "px";
-                div.innerHTML = `
-                    <div class='character-name'>${c.name}</div>
-                    <button onclick="changeName(${c.id})">Change Name</button>
-                    <button onclick="controlCharacter(${c.id})">Control</button>
-                `;
-                game.appendChild(div);
-            });
-        }
+    socket.onopen = () => {
+        console.log("Connected to WebSocket");
+        // Request initial characters here on open
+        socket.send(JSON.stringify({ type: "get_characters" }));
+    };
 
-        function changeName(id) {
-            const name = prompt("New name?");
-            if (name) window.location = `/change-name?id=${id}&name=${encodeURIComponent(name)}`;
-        }
+    socket.onerror = (err) => {
+        console.error("WebSocket error:", err);
+    };
 
-        function controlCharacter(id) {
-            myId = id;
-            alert(`You are now controlling character #${id}`);
-        }
+    let characters = {};
+    let myId = null;
 
-        document.addEventListener("keydown", e => {
-            if (myId === null) return;
-            const step = 10;
-            const me = characters[myId];
-            if (!me) return;
-            if (e.key === "ArrowLeft") me.x -= step;
-            if (e.key === "ArrowRight") me.x += step;
-            if (e.key === "ArrowUp") me.y -= step;
-            if (e.key === "ArrowDown") me.y += step;
-            fetch("/move", {
-                method: "POST",
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `id=${myId}&x=${me.x}&y=${me.y}`
-            });
-        });
+    socket.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      switch (msg.type) {
+        case "characters":
+          msg.data.forEach(drawCharacter);
+          break;
+        case "new_character":
+          drawCharacter(msg.data);
+          break;
+        case "move":
+          const c = characters[msg.data.id];
+          if (c) {
+            c.style.left = msg.data.x + "px";
+            c.style.top = msg.data.y + "px";
+          }
+          break;
+        case "name_changed":
+          const char = characters[msg.data.id];
+          if (char) {
+            char.querySelector(".character-name").textContent = msg.data.name;
+          }
+          break;
+        case "created":
+          myId = msg.data.id;
+          drawCharacter(msg.data);
+          break;
+      }
+    };
 
-        function poll() {
-            fetch("/characters")
-                .then(res => res.json())
-                .then(data => {
-                    characters = {};
-                    data.forEach(c => characters[c.id] = c);
-                    updateUI(data);
-                });
-        }
-        setInterval(poll, 1000);
-        poll();
-    </script>
 
+    function createCharacter() {
+      const name = prompt("Choose a name:");
+      if (name) {
+        socket.send(JSON.stringify({ type: "create", data: { name } }));
+      }
+    }
+
+    function drawCharacter(c) {
+      if (characters[c.id]) return;
+      const div = document.createElement("div");
+      div.className = "character";
+      div.style.background = c.color;
+      div.style.left = c.x + "px";
+      div.style.top = c.y + "px";
+      div.innerHTML = `
+        <div class="character-name">${c.name}</div>
+        <button onclick="changeName(${c.id})">Change Name</button>
+        <button onclick="controlCharacter(${c.id}, '${c.name}')">Control</button>
+      `;
+      document.getElementById("game").appendChild(div);
+      characters[c.id] = div;
+    }
+
+    function changeName(id) {
+      const name = prompt("New name?");
+      if (name) {
+        socket.send(JSON.stringify({ type: "change_name", data: { id, name } }));
+      }
+    }
+
+    function controlCharacter(id, name) {
+      myId = id;
+      alert("You are now controlling: " + name);
+    }
+
+    // Handle arrow key movement
+    window.addEventListener("keydown", (e) => {
+      if (myId == null) return;
+      const div = characters[myId];
+      if (!div) return;
+
+      const x = parseInt(div.style.left);
+      const y = parseInt(div.style.top);
+
+      let newX = x, newY = y;
+      if (e.key === "ArrowUp") newY -= 10;
+      if (e.key === "ArrowDown") newY += 10;
+      if (e.key === "ArrowLeft") newX -= 10;
+      if (e.key === "ArrowRight") newX += 10;
+
+      socket.send(JSON.stringify({ type: "move", data: { id: myId, x: newX, y: newY } }));
+    });
+  </script>
 </body>
 </html>

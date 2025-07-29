@@ -6,6 +6,9 @@ Install required dependencies:
 
 ```
 go get github.com/lib/pq github.com/joho/godotenv github.com/DATA-DOG/go-sqlmock
+
+go get nhooyr.io/websocket
+
 ```
 
 Run docker with database:
