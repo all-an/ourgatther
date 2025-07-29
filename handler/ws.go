@@ -84,7 +84,7 @@ func (c *Client) writeLoop() {
 
 func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // safe for local dev
+		InsecureSkipVerify: false, // safe for local dev
 	})
 	if err != nil {
 		log.Println("WebSocket accept error:", err)
