@@ -1,63 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Ourgatther</title>
+    <title>Multiplayer Characters</title>
     <style>
-        #character {
+        .character {
             position: absolute;
-            top: 100px;
-            left: 100px;
             width: 100px;
             height: 100px;
-            background-color: teal;
-            text-align: center;
+            background: teal;
             color: white;
-            font-weight: bold;
+            text-align: center;
             border-radius: 10px;
         }
-        #character-name {
-            color: teal;
+        .character-name {
             position: absolute;
-            top: -25px;
+            top: -20px;
             width: 100%;
             text-align: center;
-        }
-        button {
-            margin-top: 30px;
-            background-color: white;
             color: teal;
-            border: 1px solid teal;
-            border-radius: 5px;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div id="character">
-        <div id="character-name">{{index . "Name"}}</div>
-        <button type="button" onclick="changeName()">Change Name</button>
-    </div>
+    <button type="button" onclick="window.location.href='/create-character'">Create Character</button>
+    <div id="game"></div>
 
     <script>
-        const character = document.getElementById("character");
-        let x = 100, y = 100;
+        let myId = null;
+        const game = document.getElementById("game");
+        let characters = {};
+
+        function updateUI(charList) {
+            game.innerHTML = "";
+            charList.forEach(c => {
+                const div = document.createElement("div");
+                div.className = "character";
+                div.style.left = c.x + "px";
+                div.style.top = c.y + "px";
+                div.innerHTML = `
+                    <div class='character-name'>${c.name}</div>
+                    <button onclick="changeName(${c.id})">Change Name</button>
+                    <button onclick="controlCharacter(${c.id})">Control</button>
+                `;
+                game.appendChild(div);
+            });
+        }
+
+        function changeName(id) {
+            const name = prompt("New name?");
+            if (name) window.location = `/change-name?id=${id}&name=${encodeURIComponent(name)}`;
+        }
+
+        function controlCharacter(id) {
+            myId = id;
+            alert(`You are now controlling character #${id}`);
+        }
 
         document.addEventListener("keydown", e => {
+            if (myId === null) return;
             const step = 10;
-            if (e.key === "ArrowLeft") x -= step;
-            if (e.key === "ArrowRight") x += step;
-            if (e.key === "ArrowUp") y -= step;
-            if (e.key === "ArrowDown") y += step;
-            character.style.left = x + "px";
-            character.style.top = y + "px";
+            const me = characters[myId];
+            if (!me) return;
+            if (e.key === "ArrowLeft") me.x -= step;
+            if (e.key === "ArrowRight") me.x += step;
+            if (e.key === "ArrowUp") me.y -= step;
+            if (e.key === "ArrowDown") me.y += step;
+            fetch("/move", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `id=${myId}&x=${me.x}&y=${me.y}`
+            });
         });
 
-        function changeName() {
-            const newName = prompt("Enter new name:");
-            if (newName) {
-                window.location.href = "/change-name?name=" + encodeURIComponent(newName);
-            }
+        function poll() {
+            fetch("/characters")
+                .then(res => res.json())
+                .then(data => {
+                    characters = {};
+                    data.forEach(c => characters[c.id] = c);
+                    updateUI(data);
+                });
         }
+        setInterval(poll, 1000);
+        poll();
     </script>
+
 </body>
 </html>
