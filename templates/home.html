@@ -11,7 +11,7 @@
       height: 600px;
       position: relative;
     }
-    .character {
+    .player {
       position: absolute;
       width: 40px;
       height: 40px;
@@ -22,11 +22,11 @@
 </head>
 <body>
   <div id="top-buttons">
-    <button onclick="createCharacter()">Create Character</button><i><< Create a character here !</i>
+    <button onclick="createPlayer()">Create Player</button><i><< Create a player here !</i>
   </div>
-  <i>Use the arrow keys to move your character. ← ↑ → ↓  (keep pressing)</i>
+  <i>Use the arrow keys to move your player. ← ↑ → ↓  (keep pressing)</i>
   <br>
-  <i>Press the Control button to control a character. (press again if needed)</i>
+  <i>Press the Control button to control a player. (press again if needed)</i>
   <div id="game"></div>
 
   <script>
@@ -34,68 +34,68 @@
 
     socket.onopen = () => {
         console.log("Connected to WebSocket");
-        // Request initial characters here on open
-        socket.send(JSON.stringify({ type: "get_characters" }));
+        // Request initial players here on open
+        socket.send(JSON.stringify({ type: "get_players" }));
     };
 
     socket.onerror = (err) => {
         console.error("WebSocket error:", err);
     };
 
-    let characters = {};
+    let players = {};
     let myId = null;
 
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       switch (msg.type) {
-        case "characters":
-          msg.data.forEach(drawCharacter);
+        case "players":
+          msg.data.forEach(drawPlayer);
           break;
-        case "new_character":
-          drawCharacter(msg.data);
+        case "new_player":
+          drawPlayer(msg.data);
           break;
         case "move":
-          const c = characters[msg.data.id];
+          const c = players[msg.data.id];
           if (c) {
             c.style.left = msg.data.x + "px";
             c.style.top = msg.data.y + "px";
           }
           break;
         case "name_changed":
-          const char = characters[msg.data.id];
+          const char = players[msg.data.id];
           if (char) {
-            char.querySelector(".character-name").textContent = msg.data.name;
+            char.querySelector(".player-name").textContent = msg.data.name;
           }
           break;
         case "created":
           myId = msg.data.id;
-          drawCharacter(msg.data);
+          drawPlayer(msg.data);
           break;
       }
     };
 
 
-    function createCharacter() {
+    function createPlayer() {
       const name = prompt("Choose a name:");
       if (name) {
         socket.send(JSON.stringify({ type: "create", data: { name } }));
       }
     }
 
-    function drawCharacter(c) {
-      if (characters[c.id]) return;
+    function drawPlayer(c) {
+      if (players[c.id]) return;
       const div = document.createElement("div");
-      div.className = "character";
+      div.className = "player";
       div.style.background = c.color;
       div.style.left = c.x + "px";
       div.style.top = c.y + "px";
       div.innerHTML = `
-        <div class="character-name">${c.name}</div>
+        <div class="player-name">${c.name}</div>
         <button onclick="changeName(${c.id})">Change Name</button>
-        <button onclick="controlCharacter(${c.id}, '${c.name}')">Control</button>
+        <button onclick="controlPlayer(${c.id}, '${c.name}')">Control</button>
       `;
       document.getElementById("game").appendChild(div);
-      characters[c.id] = div;
+      players[c.id] = div;
     }
 
     function changeName(id) {
@@ -105,7 +105,7 @@
       }
     }
 
-    function controlCharacter(id, name) {
+    function controlPlayer(id, name) {
       myId = id;
       alert("You are now controlling: " + name);
     }
@@ -113,7 +113,7 @@
     // Handle arrow key movement
     window.addEventListener("keydown", (e) => {
       if (myId == null) return;
-      const div = characters[myId];
+      const div = players[myId];
       if (!div) return;
 
       const x = parseInt(div.style.left);

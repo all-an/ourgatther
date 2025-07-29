@@ -24,7 +24,7 @@ func main() {
 
 	hub := handler.NewHub(db)
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS characters (
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS player (
 		id SERIAL PRIMARY KEY,
 		name TEXT NOT NULL,
 		x INT NOT NULL DEFAULT 100,

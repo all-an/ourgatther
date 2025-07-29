@@ -13,7 +13,7 @@ import (
 	"nhooyr.io/websocket"
 )
 
-type Character struct {
+type Player struct {
 	ID    int    `json:"id"`
 	Name  string `json:"name"`
 	X     int    `json:"x"`
@@ -120,7 +120,7 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			id := int(m["id"].(float64))
 			x := int(m["x"].(float64))
 			y := int(m["y"].(float64))
-			_, err := h.db.Exec("UPDATE characters SET x = $1, y = $2 WHERE id = $3", x, y, id)
+			_, err := h.db.Exec("UPDATE player SET x = $1, y = $2 WHERE id = $3", x, y, id)
 			if err != nil {
 				log.Println("update error:", err)
 				continue
@@ -139,34 +139,34 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			x := rand.Intn(800)
 			y := rand.Intn(600)
 			var id int
-			h.db.QueryRow("INSERT INTO characters (name, x, y, color) VALUES ($1, $2, $3, $4) RETURNING id", name, x, y, color).Scan(&id)
-			character := Character{ID: id, Name: name, X: x, Y: y, Color: color}
-			client.send <- WSMessage{Type: "created", Data: character}
-			h.Broadcast(WSMessage{Type: "new_character", Data: character})
+			h.db.QueryRow("INSERT INTO player (name, x, y, color) VALUES ($1, $2, $3, $4) RETURNING id", name, x, y, color).Scan(&id)
+			player := Player{ID: id, Name: name, X: x, Y: y, Color: color}
+			client.send <- WSMessage{Type: "created", Data: player}
+			h.Broadcast(WSMessage{Type: "new_player", Data: player})
 		case "change_name":
 			data := req.Data.(map[string]interface{})
 			id := int(data["id"].(float64))
 			name := data["name"].(string)
-			_, _ = h.db.Exec("UPDATE characters SET name = $1 WHERE id = $2", name, id)
+			_, _ = h.db.Exec("UPDATE player SET name = $1 WHERE id = $2", name, id)
 			h.Broadcast(WSMessage{Type: "name_changed", Data: map[string]interface{}{"id": id, "name": name}})
-		case "get_characters":
-			rows, err := h.db.Query("SELECT id, name, x, y, color FROM characters")
+		case "get_players":
+			rows, err := h.db.Query("SELECT id, name, x, y, color FROM player")
 			if err != nil {
 				log.Println("db query error:", err)
 				continue
 			}
 			defer rows.Close()
 
-			var chars []Character
+			var chars []Player
 			for rows.Next() {
-				var c Character
+				var c Player
 				if err := rows.Scan(&c.ID, &c.Name, &c.X, &c.Y, &c.Color); err != nil {
 					log.Println("db scan error:", err)
 					continue
 				}
 				chars = append(chars, c)
 			}
-			client.send <- WSMessage{Type: "characters", Data: chars}
+			client.send <- WSMessage{Type: "player", Data: chars}
 
 		}
 	}
@@ -174,16 +174,16 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 
 func Home(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query("SELECT id, name, x, y, color FROM characters")
+		rows, err := db.Query("SELECT id, name, x, y, color FROM player")
 		if err != nil {
-			http.Error(w, "Failed to query characters: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Failed to query player: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
 
-		var chars []Character
+		var chars []Player
 		for rows.Next() {
-			var c Character
+			var c Player
 			if err := rows.Scan(&c.ID, &c.Name, &c.X, &c.Y, &c.Color); err != nil {
 				http.Error(w, "Failed to scan row: "+err.Error(), http.StatusInternalServerError)
 				return
