@@ -24,13 +24,14 @@ func main() {
 
 	hub := handler.NewHub(db)
 
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS character (
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS characters (
 		id SERIAL PRIMARY KEY,
 		name TEXT NOT NULL,
 		x INT NOT NULL DEFAULT 100,
 		y INT NOT NULL DEFAULT 100,
 		color TEXT NOT NULL DEFAULT 'teal'
 	)`)
+
 	if err != nil {
 		log.Fatal(err)
 	}

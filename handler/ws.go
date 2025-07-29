@@ -120,7 +120,7 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			id := int(m["id"].(float64))
 			x := int(m["x"].(float64))
 			y := int(m["y"].(float64))
-			_, err := h.db.Exec("UPDATE character SET x = $1, y = $2 WHERE id = $3", x, y, id)
+			_, err := h.db.Exec("UPDATE characters SET x = $1, y = $2 WHERE id = $3", x, y, id)
 			if err != nil {
 				log.Println("update error:", err)
 				continue
@@ -139,7 +139,7 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			x := rand.Intn(800)
 			y := rand.Intn(600)
 			var id int
-			h.db.QueryRow("INSERT INTO character (name, x, y, color) VALUES ($1, $2, $3, $4) RETURNING id", name, x, y, color).Scan(&id)
+			h.db.QueryRow("INSERT INTO characters (name, x, y, color) VALUES ($1, $2, $3, $4) RETURNING id", name, x, y, color).Scan(&id)
 			character := Character{ID: id, Name: name, X: x, Y: y, Color: color}
 			client.send <- WSMessage{Type: "created", Data: character}
 			h.Broadcast(WSMessage{Type: "new_character", Data: character})
@@ -147,10 +147,10 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			data := req.Data.(map[string]interface{})
 			id := int(data["id"].(float64))
 			name := data["name"].(string)
-			_, _ = h.db.Exec("UPDATE character SET name = $1 WHERE id = $2", name, id)
+			_, _ = h.db.Exec("UPDATE characters SET name = $1 WHERE id = $2", name, id)
 			h.Broadcast(WSMessage{Type: "name_changed", Data: map[string]interface{}{"id": id, "name": name}})
 		case "get_characters":
-			rows, err := h.db.Query("SELECT id, name, x, y, color FROM character")
+			rows, err := h.db.Query("SELECT id, name, x, y, color FROM characters")
 			if err != nil {
 				log.Println("db query error:", err)
 				continue
@@ -174,7 +174,7 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 
 func Home(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query("SELECT id, name, x, y, color FROM character")
+		rows, err := db.Query("SELECT id, name, x, y, color FROM characters")
 		if err != nil {
 			http.Error(w, "Failed to query characters: "+err.Error(), http.StatusInternalServerError)
 			return
