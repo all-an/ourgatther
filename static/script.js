@@ -228,7 +228,7 @@ function controlPlayer(id) {
 let keysPressed = {};
 let moveSpeed = 8;
 let lastMoveTime = 0;
-let moveThrottleMs = 50;
+let moveThrottleMs = 16; // ~60fps for smoother movement
 
 window.addEventListener("keydown", (e) => {
     if (myId == null) return;

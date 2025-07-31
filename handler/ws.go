@@ -126,15 +126,20 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			id := int(m["id"].(float64))
 			x := int(m["x"].(float64))
 			y := int(m["y"].(float64))
-			_, err := h.db.Exec("UPDATE player SET x = $1, y = $2 WHERE id = $3", x, y, id)
-			if err != nil {
-				log.Println("update error:", err)
-				continue
-			}
+			
+			// Broadcast immediately without waiting for DB
 			h.Broadcast(WSMessage{
 				Type: "move",
 				Data: map[string]interface{}{"id": id, "x": x, "y": y},
 			})
+			
+			// Update DB asynchronously (non-blocking)
+			go func() {
+				_, err := h.db.Exec("UPDATE player SET x = $1, y = $2 WHERE id = $3", x, y, id)
+				if err != nil {
+					log.Println("async update error:", err)
+				}
+			}()
 		case "create":
 			name := req.Data.(map[string]interface{})["name"].(string)
 			color := []string{
