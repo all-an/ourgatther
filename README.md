@@ -1,5 +1,19 @@
 # ourgatther
-ourgatther
+
+## An attempt to create an open source gather clone
+
+Stack:
+
+Go
+Websockets
+Postgres
+Javascript / HTML / CSS
+
+----
+
+Live deploy:
+
+https://ourgatther.onrender.com/
 
 
 Install required dependencies:

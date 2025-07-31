@@ -104,7 +104,13 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, msg, err := conn.Read(ctx)
 		if err != nil {
-			log.Printf("WebSocket disconnected: %v", err)
+			// Check if this is a normal closure or going away close, not an actual error
+			closeErr := websocket.CloseStatus(err)
+			if closeErr == websocket.StatusNormalClosure || closeErr == websocket.StatusGoingAway {
+				log.Printf("WebSocket closed: %v", err)
+			} else {
+				log.Printf("WebSocket disconnected with error: %v", err)
+			}
 			break
 		}
 
@@ -167,6 +173,15 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 				chars = append(chars, c)
 			}
 			client.send <- WSMessage{Type: "players", Data: chars}
+		case "save_drawing":
+			data := req.Data.(map[string]interface{})
+			playerID := int(data["playerId"].(float64))
+			image := data["image"].(string)
+
+			_, err := h.db.Exec("INSERT INTO drawing (player_id, image) VALUES ($1, $2)", playerID, image)
+			if err != nil {
+				log.Println("error saving drawing:", err)
+			}
 
 		}
 	}

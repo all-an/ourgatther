@@ -1,0 +1,91 @@
+body {
+    margin: 0;
+    overflow: hidden;
+}
+
+#game {
+    position: absolute;
+    width: 10000px;
+    height: 10000px;
+}
+
+.player {
+    position: absolute;
+    width: 60px;
+    height: auto;
+    text-align: center;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px; /* Optional: small spacing between elements */
+}
+
+.player-btn {
+    z-index: 10;
+    font-size: 10px;
+    padding: 2px 4px;
+}
+
+#sidebar {
+    width: 250px;
+    height: 100vh;
+    background-color: #f1f1f1;
+    position: fixed;
+    right: 0;
+    top: 0;
+    transition: transform 0.3s ease;
+    transform: translateX(100%);
+    z-index: 1000;
+}
+
+#sidebar:not(.hidden) {
+    transform: translateX(0);
+}
+
+#constructBtn {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    z-index: 1100;
+}
+
+#canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
+    pointer-events: none;
+    cursor: default;
+}
+
+#background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 10000px;
+    height: 10000px;
+    background-image: url('/static/background.png');
+    background-repeat: repeat;
+    z-index: -1;
+}
+
+#controls {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 5px;
+    border-radius: 5px;
+}
+
+#controls-player {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 5px;
+    border-radius: 5px;
+}
