@@ -102,29 +102,33 @@ body {
 
 #earth {
     /*transform: translate(20px, calc(100vh - 84px)); /* 64px height + 20px padding */
-    width: 64px;
-    height: 64px;
+    width: 64px !important;
+    height: 64px !important;
+    max-width: 64px !important;
+    max-height: 64px !important;
     /*cursor: grab;*/
-    position: absolute;
-    top: 200px;
-    left: 10px;
-    z-index: 10;
-    padding: 5px;
-    border-radius: 5px;
+    position: absolute !important;
+    top: 200px !important;
+    left: 10px !important;
+    z-index: 10 !important;
+    padding: 5px !important;
+    border-radius: 5px !important;
 }
 
 .health-bar {
-    width: 40px;
-    height: 6px;
-    background: red;
-    border: 1px solid black;
-    margin-bottom: 2px;
-    position: relative;
+    width: 40px !important;
+    height: 6px !important;
+    background: red !important;
+    border: 1px solid black !important;
+    margin-bottom: 2px !important;
+    position: relative !important;
+    display: block !important;
 }
 .health-fill {
-    height: 100%;
-    background: limegreen;
-    width: 100%;
+    height: 100% !important;
+    background: limegreen !important;
+    width: 100% !important;
+    display: block !important;
 }
 .bullet {
     position: absolute;
