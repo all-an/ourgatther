@@ -4,10 +4,11 @@
 
 Stack:
 
-Go
-Websockets
-Postgres
-Javascript / HTML / CSS
+- Go
+- Websockets
+- HTTP
+- Postgres
+- Javascript / HTML / CSS
 
 ----
 
