@@ -80,6 +80,16 @@ body {
     border-radius: 5px;
 }
 
+#instructions {
+    position: absolute;
+    top: 50px;
+    left: 10px;
+    z-index: 10;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 5px;
+    border-radius: 5px;
+}
+
 #controls-player {
     position: absolute;
     top: 10px;
@@ -88,4 +98,39 @@ body {
     background-color: rgba(255, 255, 255, 0.8);
     padding: 5px;
     border-radius: 5px;
+}
+
+#earth {
+    /*transform: translate(20px, calc(100vh - 84px)); /* 64px height + 20px padding */
+    width: 64px;
+    height: 64px;
+    /*cursor: grab;*/
+    position: absolute;
+    top: 200px;
+    left: 10px;
+    z-index: 10;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.health-bar {
+    width: 40px;
+    height: 6px;
+    background: red;
+    border: 1px solid black;
+    margin-bottom: 2px;
+    position: relative;
+}
+.health-fill {
+    height: 100%;
+    background: limegreen;
+    width: 100%;
+}
+.bullet {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: yellow;
+    border-radius: 50%;
+    z-index: 5;
 }

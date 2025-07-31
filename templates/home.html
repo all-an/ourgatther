@@ -13,8 +13,11 @@
         <button onclick="createPlayer()">Create Player</button>
         <i><< Create a player here !</i>
     </div>
-    <i>Use the arrow keys to move your player. ← ↑ → ↓ (keep pressing)</i><br />
-    <i>Press the Control button to control a player. (press again if needed)</i>
+    <div id="instructions">
+        <i>Use the arrow keys to move your player. ← ↑ → ↓ (keep pressing)</i><br />
+        <i>Press the Control button to control a player. (press again if needed)</i><br />
+        <i>Press the Target and Shoot button on your target to destroy it.</i>
+    </div>
     <div id="game"></div>
 
     <div id="sidebar" class="hidden">
@@ -30,5 +33,6 @@
     <canvas id="canvas" width="800" height="600"></canvas>
     
     <script src="/static/script.js"></script>
+    <img id="earth" src="/static/pixel-earth.gif" alt="Spinning Earth">
 </body>
 </html>

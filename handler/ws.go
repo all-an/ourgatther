@@ -183,6 +183,41 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 				log.Println("error saving drawing:", err)
 			}
 
+		case "delete_player":
+			data := req.Data.(map[string]interface{})
+			id := int(data["id"].(float64))
+
+			tx, err := h.db.Begin()
+			if err != nil {
+				log.Println("error starting transaction:", err)
+				continue
+			}
+
+			_, err = tx.Exec("DELETE FROM drawing WHERE player_id = $1", id)
+			if err != nil {
+				tx.Rollback()
+				log.Println("error deleting drawings:", err)
+				continue
+			}
+
+			_, err = tx.Exec("DELETE FROM player WHERE id = $1", id)
+			if err != nil {
+				tx.Rollback()
+				log.Println("error deleting player:", err)
+				continue
+			}
+
+			err = tx.Commit()
+			if err != nil {
+				log.Println("error committing transaction:", err)
+				continue
+			}
+
+			h.Broadcast(WSMessage{
+				Type: "player_deleted",
+				Data: map[string]interface{}{"id": id},
+			})
+
 		}
 	}
 }
