@@ -82,7 +82,7 @@ body {
 
 #instructions {
     position: absolute;
-    top: 50px;
+    top: 110px;
     left: 10px;
     z-index: 10;
     background-color: rgba(255, 255, 255, 0.8);
@@ -127,8 +127,9 @@ body {
 .health-fill {
     height: 100% !important;
     background: limegreen !important;
-    width: 100% !important;
+    width: 100%;
     display: block !important;
+    transition: width 0.2s ease;
 }
 .bullet {
     position: absolute;
@@ -137,4 +138,35 @@ body {
     background: yellow;
     border-radius: 50%;
     z-index: 5;
+}
+
+.medkit {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: white;
+    border: 1px solid #ccc;
+    z-index: 5;
+}
+
+.medkit::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 2px;
+    background: red;
+}
+
+.medkit::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 8px;
+    background: red;
 }

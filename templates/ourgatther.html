@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ourgatther</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="background"></div>
+
+    <div id="controls">
+        <button onclick="createPlayer()">Create Player</button>
+        <i><< Create a player here !</i>
+    </div>
+    <div id="instructions">
+        <i>Use the arrow keys to move your player. ← ↑ → ↓ (keep pressing)</i><br />
+        <i>Press the Control button to control a player. (press again if needed)</i><br />
+        <i>Press Gun Mode to enable shooting, then click anywhere to shoot in that direction.</i><br />
+        <i>Press Med Mode to enable healing, then click anywhere to launch med kits and heal players.</i>
+    </div>
+    <div id="game"></div>
+
+    <div id="sidebar" class="hidden">
+        <button id="startDrawBtn">Start Drawing</button>
+        <button id="stopDrawBtn" style="display:none;">Stop Drawing</button>
+        <br><br>
+        <label for="colorPicker">Pick Color:</label>
+        <input type="color" id="colorPicker" value="#000000" />
+    </div>
+
+    <button id="constructBtn" style="display: none;">Construct</button>
+
+    <canvas id="canvas" width="800" height="600"></canvas>
+    
+    <script>
+        // Authentication check and auto-control last player
+        document.addEventListener('DOMContentLoaded', async function() {
+            const accountId = localStorage.getItem('accountId');
+            const username = localStorage.getItem('username');
+            
+            if (!accountId) {
+                alert('You must be logged in to access this page. Redirecting to login...');
+                window.location.href = '/';
+                return;
+            }
+            
+            // Show username in UI
+            const controls = document.getElementById('controls');
+            if (controls) {
+                const userInfo = document.createElement('div');
+                userInfo.innerHTML = `<i>Logged in as: ${username}</i><br><button onclick="logout()">Logout</button>`;
+                controls.appendChild(userInfo);
+            }
+
+            // Fetch account info and set up auto-control immediately
+            try {
+                const response = await fetch(`/account-info?accountId=${accountId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.lastPlayer) {
+                        // Set control immediately without waiting
+                        myId = data.lastPlayer.id;
+                        updateUIBasedOnControl();
+                        
+                        // Store player info for when they appear
+                        window.pendingAutoControl = data.lastPlayer;
+                        
+                        console.log(`Auto-controlling player: ${data.lastPlayer.name} (ID: ${data.lastPlayer.id})`);
+                        
+                        // Show immediate feedback to user
+                        const controls = document.getElementById('controls');
+                        if (controls) {
+                            const autoControlInfo = document.createElement('div');
+                            autoControlInfo.id = 'auto-control-info';
+                            autoControlInfo.innerHTML = `<i style="color: #0066cc;">Controlling: ${data.lastPlayer.name}</i>`;
+                            controls.appendChild(autoControlInfo);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch account info:', error);
+            }
+        });
+
+        
+        function logout() {
+            localStorage.removeItem('accountId');
+            localStorage.removeItem('username');
+            window.location.href = '/';
+        }
+    </script>
+    <script src="/static/script.js"></script>
+    <img id="earth" src="/static/pixel-earth.gif" alt="Spinning Earth">
+</body>
+</html>

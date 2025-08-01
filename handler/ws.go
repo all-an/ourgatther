@@ -10,6 +10,7 @@ import (
 	"sync"
 	"text/template"
 
+	"golang.org/x/crypto/bcrypt"
 	"nhooyr.io/websocket"
 )
 
@@ -141,7 +142,10 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}()
 		case "create":
-			name := req.Data.(map[string]interface{})["name"].(string)
+			data := req.Data.(map[string]interface{})
+			name := data["name"].(string)
+			accountID := int(data["accountId"].(float64))
+			
 			color := []string{
 				"teal", "tomato", "orange", "green", "gold", "pink",
 				"cyan", "magenta", "lime", "coral", "brown", "orchid",
@@ -150,7 +154,12 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			x := rand.Intn(800)
 			y := rand.Intn(600)
 			var id int
-			h.db.QueryRow("INSERT INTO player (name, x, y, color) VALUES ($1, $2, $3, $4) RETURNING id", name, x, y, color).Scan(&id)
+			h.db.QueryRow("INSERT INTO player (name, x, y, color, account_id) VALUES ($1, $2, $3, $4, $5) RETURNING id", 
+				name, x, y, color, accountID).Scan(&id)
+			
+			// Update account's last_player_id
+			h.db.Exec("UPDATE account SET last_player_id = $1 WHERE id = $2", id, accountID)
+			
 			player := Player{ID: id, Name: name, X: x, Y: y, Color: color}
 			client.send <- WSMessage{Type: "created", Data: player}
 			h.Broadcast(WSMessage{Type: "new_player", Data: player})
@@ -178,6 +187,17 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 				chars = append(chars, c)
 			}
 			client.send <- WSMessage{Type: "players", Data: chars}
+		case "control_player":
+			data := req.Data.(map[string]interface{})
+			playerID := int(data["playerId"].(float64))
+			accountID := int(data["accountId"].(float64))
+			
+			// Update account's last controlled player
+			_, err := h.db.Exec("UPDATE account SET last_player_id = $1 WHERE id = $2", playerID, accountID)
+			if err != nil {
+				log.Println("error updating last player:", err)
+			}
+			
 		case "save_drawing":
 			data := req.Data.(map[string]interface{})
 			playerID := int(data["playerId"].(float64))
@@ -247,5 +267,187 @@ func Home(db *sql.DB) http.HandlerFunc {
 		}
 		tmpl := template.Must(template.ParseFiles("templates/home.html"))
 		tmpl.Execute(w, chars)
+	}
+}
+
+type Account struct {
+	ID           int    `json:"id"`
+	Username     string `json:"username"`
+	PasswordHash string `json:"-"`
+	LastPlayerID *int   `json:"lastPlayerId"`
+}
+
+type AuthRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type AuthResponse struct {
+	AccountID int    `json:"accountId"`
+	Error     string `json:"error,omitempty"`
+}
+
+func LoginHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req AuthRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Invalid JSON"})
+			return
+		}
+
+		var account Account
+		err := db.QueryRow("SELECT id, username, password_hash, last_player_id FROM account WHERE username = $1", 
+			req.Username).Scan(&account.ID, &account.Username, &account.PasswordHash, &account.LastPlayerID)
+		
+		if err == sql.ErrNoRows {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Invalid credentials"})
+			return
+		} else if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Database error"})
+			return
+		}
+
+		if err := bcrypt.CompareHashAndPassword([]byte(account.PasswordHash), []byte(req.Password)); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Invalid credentials"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AuthResponse{AccountID: account.ID})
+	}
+}
+
+func RegisterHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req AuthRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Invalid JSON"})
+			return
+		}
+
+		if len(req.Username) < 3 || len(req.Password) < 6 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Username must be at least 3 characters, password at least 6"})
+			return
+		}
+
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Password hashing failed"})
+			return
+		}
+
+		_, err = db.Exec("INSERT INTO account (username, password_hash) VALUES ($1, $2)", 
+			req.Username, string(hashedPassword))
+		
+		if err != nil {
+			if err.Error() == "pq: duplicate key value violates unique constraint \"account_username_key\"" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				json.NewEncoder(w).Encode(AuthResponse{Error: "Username already exists"})
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(AuthResponse{Error: "Database error"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AuthResponse{})
+	}
+}
+
+func OurgatherPage(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.Query("SELECT id, name, x, y, color FROM player")
+		if err != nil {
+			http.Error(w, "Failed to query player: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var chars []Player
+		for rows.Next() {
+			var c Player
+			if err := rows.Scan(&c.ID, &c.Name, &c.X, &c.Y, &c.Color); err != nil {
+				http.Error(w, "Failed to scan row: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			chars = append(chars, c)
+		}
+
+		tmpl := template.Must(template.ParseFiles("templates/ourgatther.html"))
+		tmpl.Execute(w, chars)
+	}
+}
+
+func AccountInfoHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		accountID := r.URL.Query().Get("accountId")
+		if accountID == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Account ID required"})
+			return
+		}
+
+		var lastPlayerID *int
+		var playerData *Player
+		
+		// Get account's last player ID
+		err := db.QueryRow("SELECT last_player_id FROM account WHERE id = $1", accountID).Scan(&lastPlayerID)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Database error"})
+			return
+		}
+
+		// If there's a last player, get their info
+		if lastPlayerID != nil {
+			var player Player
+			err = db.QueryRow("SELECT id, name, x, y, color FROM player WHERE id = $1", *lastPlayerID).Scan(
+				&player.ID, &player.Name, &player.X, &player.Y, &player.Color)
+			if err == nil {
+				playerData = &player
+			}
+		}
+
+		response := map[string]interface{}{
+			"lastPlayerId": lastPlayerID,
+			"lastPlayer":   playerData,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
 	}
 }

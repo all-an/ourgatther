@@ -3,36 +3,193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ourgatther</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>Ourgatther - Login</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #0a0e33 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 2rem;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+        input[type="text"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-bottom: 1rem;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .toggle {
+            text-align: center;
+            color: #666;
+        }
+        .toggle a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .toggle a:hover {
+            text-decoration: underline;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 0.75rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+            border: 1px solid #fcc;
+        }
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 0.75rem;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+            border: 1px solid #cfc;
+        }
+    </style>
 </head>
 <body>
-    <div id="background"></div>
-
-    <div id="controls">
-        <button onclick="createPlayer()">Create Player</button>
-        <i><< Create a player here !</i>
+    <div class="container">
+        <h1>Welcome to Ourgatther</h1>
+        
+        <div id="message"></div>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn" id="submitBtn">Login</button>
+        </form>
+        
+        <div class="toggle">
+            <span id="toggleText">Don't have an account?</span>
+            <a href="#" id="toggleLink">Register here</a>
+        </div>
     </div>
-    <div id="instructions">
-        <i>Use the arrow keys to move your player. ← ↑ → ↓ (keep pressing)</i><br />
-        <i>Press the Control button to control a player. (press again if needed)</i><br />
-        <i>Press the Target and Shoot button on your target to destroy it.</i>
-    </div>
-    <div id="game"></div>
 
-    <div id="sidebar" class="hidden">
-        <button id="startDrawBtn">Start Drawing</button>
-        <button id="stopDrawBtn" style="display:none;">Stop Drawing</button>
-        <br><br>
-        <label for="colorPicker">Pick Color:</label>
-        <input type="color" id="colorPicker" value="#000000" />
-    </div>
+    <script>
+        let isLogin = true;
+        const form = document.getElementById('loginForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const toggleText = document.getElementById('toggleText');
+        const toggleLink = document.getElementById('toggleLink');
+        const messageDiv = document.getElementById('message');
 
-    <button id="constructBtn" style="display: none;">Construct</button>
+        toggleLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            isLogin = !isLogin;
+            
+            if (isLogin) {
+                submitBtn.textContent = 'Login';
+                toggleText.textContent = "Don't have an account?";
+                toggleLink.textContent = 'Register here';
+            } else {
+                submitBtn.textContent = 'Register';
+                toggleText.textContent = 'Already have an account?';
+                toggleLink.textContent = 'Login here';
+            }
+            messageDiv.innerHTML = '';
+        });
 
-    <canvas id="canvas" width="800" height="600"></canvas>
-    
-    <script src="/static/script.js"></script>
-    <img id="earth" src="/static/pixel-earth.gif" alt="Spinning Earth">
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                showMessage('Please fill in all fields', 'error');
+                return;
+            }
+
+            try {
+                const endpoint = isLogin ? '/login' : '/register';
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    if (isLogin) {
+                        localStorage.setItem('accountId', data.accountId);
+                        localStorage.setItem('username', username);
+                        window.location.href = '/ourgatther';
+                    } else {
+                        showMessage('Registration successful! Please login.', 'success');
+                        // Switch to login form
+                        isLogin = true;
+                        submitBtn.textContent = 'Login';
+                        toggleText.textContent = "Don't have an account?";
+                        toggleLink.textContent = 'Register here';
+                    }
+                } else {
+                    showMessage(data.error || 'An error occurred', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error. Please try again.', 'error');
+            }
+        });
+
+        function showMessage(text, type) {
+            messageDiv.innerHTML = `<div class="${type}">${text}</div>`;
+        }
+    </script>
 </body>
 </html>
