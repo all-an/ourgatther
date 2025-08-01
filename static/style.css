@@ -101,18 +101,14 @@ body {
 }
 
 #earth {
-    /*transform: translate(20px, calc(100vh - 84px)); /* 64px height + 20px padding */
     width: 64px !important;
     height: 64px !important;
     max-width: 64px !important;
     max-height: 64px !important;
-    /*cursor: grab;*/
     position: absolute !important;
-    top: 200px !important;
-    left: 10px !important;
-    z-index: 10 !important;
-    padding: 5px !important;
-    border-radius: 5px !important;
+    top: 300px !important;
+    left: 400px !important;
+    z-index: 0 !important;
 }
 
 .health-bar {

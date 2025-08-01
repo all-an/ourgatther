@@ -264,10 +264,48 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			data := req.Data.(map[string]interface{})
 			id := int(data["id"].(float64))
 			
-			log.Printf("🚫 BLOCKED: Attempted to delete player %d from database (now disabled for persistence)", id)
+			log.Printf("💀 Deleting dead player %d from database", id)
 			
-			// Instead of deleting, just broadcast that the player is "removed" from active state
-			// but keep them in the database for re-login
+			// Start transaction to handle foreign key constraints
+			tx, err := h.db.Begin()
+			if err != nil {
+				log.Printf("❌ Error starting transaction for player %d deletion: %v", id, err)
+				continue
+			}
+			
+			// First delete any drawings by this player
+			_, err = tx.Exec("DELETE FROM drawing WHERE player_id = $1", id)
+			if err != nil {
+				tx.Rollback()
+				log.Printf("❌ Error deleting drawings for player %d: %v", id, err)
+				continue
+			}
+			
+			// Clear any account references to this player
+			_, err = tx.Exec("UPDATE account SET last_player_id = NULL WHERE last_player_id = $1", id)
+			if err != nil {
+				tx.Rollback()
+				log.Printf("❌ Error clearing account references for player %d: %v", id, err)
+				continue
+			}
+			
+			// Delete the player
+			_, err = tx.Exec("DELETE FROM player WHERE id = $1", id)
+			if err != nil {
+				tx.Rollback()
+				log.Printf("❌ Error deleting player %d: %v", id, err)
+				continue
+			}
+			
+			// Commit transaction
+			if err = tx.Commit(); err != nil {
+				log.Printf("❌ Error committing player %d deletion: %v", id, err)
+				continue
+			}
+			
+			log.Printf("✅ Successfully deleted player %d from database", id)
+			
+			// Broadcast player deletion to all clients
 			h.Broadcast(WSMessage{
 				Type: "player_deleted",
 				Data: map[string]interface{}{"id": id},

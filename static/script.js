@@ -120,6 +120,27 @@ socket.onmessage = (event) => {
                 playerHealth[playerId] = newHealth;
                 updateHealthBar(playerId);
                 console.log(`🔄 Health updated: Player ${playerId}: ${oldHealth} -> ${newHealth}% (${changeType})`);
+                
+                // Handle death for all clients
+                if (newHealth <= 0) {
+                    // Remove player from local arrays and DOM
+                    const playerDiv = players[playerId];
+                    if (playerDiv) {
+                        playerDiv.remove();
+                    }
+                    delete players[playerId];
+                    delete playerHealth[playerId];
+                    delete playerPositions[playerId];
+                    console.log(`🫥 Player ${playerId} removed from game (WebSocket death)`);
+                    
+                    // If this was the controlled player, clear control and alert
+                    if (playerId === myId) {
+                        myId = null;
+                        updateUIBasedOnControl();
+                        alert("Your player has died! You need to create a new player to continue playing.");
+                        console.log(`🎮 Control cleared for dead player ${playerId} (WebSocket)`);
+                    }
+                }
             } else {
                 console.warn(`❌ Cannot update health for unknown player ${playerId}`);
             }
@@ -407,7 +428,6 @@ window.changeName = changeName;
 window.scrollBackgroundTo = scrollBackgroundTo;
 window.updateUIBasedOnControl = updateUIBasedOnControl;
 window.setCameraImmediately = setCameraImmediately;
-window.respawnPlayer = respawnPlayer;
 
 function updatePlayerControlVisuals() {
     // Update visual indicators for all players
@@ -546,17 +566,54 @@ function spawnDirectionalBullet(fromId, targetX, targetY, fromWebSocket = false)
 
         // Check collision with all players (only apply damage if not from WebSocket or if we're the shooter)
         let hit = false;
+        const allPlayerIds = Object.keys(players);
+        const eligiblePlayers = allPlayerIds.filter(id => parseInt(id) !== fromId);
+        const debugPlayers = allPlayerIds.map(id => `${id}@(${parseInt(players[id].style.left)},${parseInt(players[id].style.top)})`).join(', ');
+        
+        if (stepCount % 10 === 0) { // Log every 10th step to reduce spam
+            console.log(`🔍 Bullet from ${fromId} at (${x.toFixed(0)}, ${y.toFixed(0)}) - Total players: ${allPlayerIds.length}, Eligible targets: ${eligiblePlayers.length} (${eligiblePlayers.join(',')})`);
+            console.log(`🔍 Player positions: ${debugPlayers}`);
+        }
+        
+        // Special logging when bullet is near player 19's X coordinate
+        if (Math.abs(x - 414) < 30 && eligiblePlayers.includes('19')) {
+            console.log(`🎯 TRAJECTORY CHECK: Bullet at (${x.toFixed(0)}, ${y.toFixed(0)}) is near Player19's X position (414)`);
+            console.log(`🎯 Player19 is at (414, 416) - Y difference: ${Math.abs(y - 416).toFixed(1)} pixels`);
+        }
+        
         Object.keys(players).forEach(playerId => {
             if (parseInt(playerId) === fromId) return; // Don't hit self
             
             const player = players[playerId];
             if (player) {
-                const playerX = parseInt(player.style.left) + 30;
-                const playerY = parseInt(player.style.top) + 30;
-                const distToPlayer = Math.hypot(playerX - x, playerY - y);
+                // Player dimensions (60px wide, full element height including buttons)
+                const playerLeft = parseInt(player.style.left);
+                const playerTop = parseInt(player.style.top);
+                const playerWidth = 60;
+                const playerHeight = player.offsetHeight; // Full element height including buttons
                 
-                if (distToPlayer < 30 && !hit) {
-                    console.log(`🎯 Directional bullet hit player ${playerId}! Distance: ${distToPlayer.toFixed(1)}px`);
+                // Check if bullet position is within player rectangle
+                const bulletHitsPlayer = (
+                    x >= playerLeft && 
+                    x <= playerLeft + playerWidth &&
+                    y >= playerTop && 
+                    y <= playerTop + playerHeight
+                );
+                
+                // Debug logging for close misses with detailed collision info
+                const distance = Math.hypot((playerLeft + playerWidth/2) - x, (playerTop + playerHeight/2) - y);
+                if (distance < 150 && stepCount % 3 === 0) { // Increased range and frequency for debugging
+                    const playerRight = playerLeft + playerWidth;
+                    const playerBottom = playerTop + playerHeight;
+                    console.log(`🔍 Close check: Bullet(${x.toFixed(0)}, ${y.toFixed(0)}) vs Player${playerId}(${playerLeft}, ${playerTop})`);
+                    console.log(`🔍   Player bounds: Left=${playerLeft}, Right=${playerRight}, Top=${playerTop}, Bottom=${playerBottom}`);
+                    console.log(`🔍   X check: ${x} >= ${playerLeft} = ${x >= playerLeft}, ${x} <= ${playerRight} = ${x <= playerRight}`);
+                    console.log(`🔍   Y check: ${y} >= ${playerTop} = ${y >= playerTop}, ${y} <= ${playerBottom} = ${y <= playerBottom}`);
+                    console.log(`🔍   Final hit: ${bulletHitsPlayer}, distance: ${distance.toFixed(1)}`);
+                }
+                
+                if (bulletHitsPlayer && !hit) {
+                    console.log(`🎯 Directional bullet hit player ${playerId}! Bullet at (${x.toFixed(0)}, ${y.toFixed(0)}) hit player at (${playerLeft}, ${playerTop})`);
                     console.log(`🎯 Collision check: fromWebSocket=${fromWebSocket}, fromId=${fromId}, myId=${myId}, shouldApplyDamage=${!fromWebSocket || fromId === myId}`);
                     // Only the original shooter applies damage to prevent duplicates
                     if (!fromWebSocket || fromId === myId) {
@@ -634,12 +691,22 @@ function spawnDirectionalMedKit(fromId, targetX, targetY, fromWebSocket = false)
             
             const player = players[playerId];
             if (player) {
-                const playerX = parseInt(player.style.left) + 30;
-                const playerY = parseInt(player.style.top) + 30;
-                const distToPlayer = Math.hypot(playerX - x, playerY - y);
+                // Player dimensions (60px wide, full element height including buttons)
+                const playerLeft = parseInt(player.style.left);
+                const playerTop = parseInt(player.style.top);
+                const playerWidth = 60;
+                const playerHeight = player.offsetHeight; // Full element height including buttons
                 
-                if (distToPlayer < 30 && !hit) {
-                    console.log(`💊 Med kit hit player ${playerId}! Distance: ${distToPlayer.toFixed(1)}px`);
+                // Check if med kit position is within player rectangle
+                const medkitHitsPlayer = (
+                    x >= playerLeft && 
+                    x <= playerLeft + playerWidth &&
+                    y >= playerTop && 
+                    y <= playerTop + playerHeight
+                );
+                
+                if (medkitHitsPlayer && !hit) {
+                    console.log(`💊 Med kit hit player ${playerId}! Med kit at (${x.toFixed(0)}, ${y.toFixed(0)}) hit player at (${playerLeft}, ${playerTop})`);
                     console.log(`💊 Collision check: fromWebSocket=${fromWebSocket}, fromId=${fromId}, myId=${myId}, shouldApplyHealing=${!fromWebSocket || fromId === myId}`);
                     // Only the original medic applies healing to prevent duplicates
                     if (!fromWebSocket || fromId === myId) {
@@ -1046,7 +1113,7 @@ function applyDamage(id) {
         playerHealth[id] = 0;
         updateHealthBar(id);
         
-        console.log(`💀 Player ${id} has died but will remain in database for respawn`);
+        console.log(`💀 Player ${id} has died and will be hidden`);
         
         // Disable gun mode if the dying player was in gun mode
         if (gunMode && gunModePlayerId === id) {
@@ -1056,22 +1123,37 @@ function applyDamage(id) {
             console.log(`Gun mode disabled due to player ${id} death`);
         }
         
-        // Don't delete the player from database - just mark as dead
-        // Players should persist for re-login auto-control
+        // Disable med mode if the dying player was in med mode
+        if (medMode && medModePlayerId === id) {
+            medMode = false;
+            medModePlayerId = null;
+            document.body.style.cursor = "default";
+            console.log(`Med mode disabled due to player ${id} death`);
+        }
+        
+        // Delete the player from database and remove from view
+        console.log(`🗑️ Deleting dead player ${id} from database`);
+        socket.send(JSON.stringify({ 
+            type: "delete_player", 
+            data: { id: id } 
+        }));
+        
+        // Remove player from local arrays and DOM
         const playerDiv = players[id];
         if (playerDiv) {
-            playerDiv.style.opacity = "0.5"; // Visual indicator of death
-            playerDiv.title = "This player is dead";
-            
-            // Add respawn button if this is the controlled player
-            if (id === myId) {
-                const respawnBtn = document.createElement("button");
-                respawnBtn.className = "player-btn";
-                respawnBtn.textContent = "Respawn";
-                respawnBtn.style.backgroundColor = "#44ff44";
-                respawnBtn.onclick = () => respawnPlayer(id);
-                playerDiv.appendChild(respawnBtn);
-            }
+            playerDiv.remove();
+        }
+        delete players[id];
+        delete playerHealth[id];
+        delete playerPositions[id];
+        console.log(`🫥 Player ${id} removed from game`);
+        
+        // If this was the controlled player, clear control and alert
+        if (id === myId) {
+            myId = null;
+            updateUIBasedOnControl();
+            alert("Your player has died! You need to create a new player to continue playing.");
+            console.log(`🎮 Control cleared for dead player ${id}`);
         }
     } else {
         updateHealthBar(id);
@@ -1119,37 +1201,6 @@ function applyHealing(id) {
     }
 }
 
-function respawnPlayer(id) {
-    console.log(`🔄 Respawning player ${id}`);
-    
-    // Reset health to full
-    playerHealth[id] = 100;
-    updateHealthBar(id);
-    
-    // Send health change to server
-    socket.send(JSON.stringify({ 
-        type: "health_change", 
-        data: { 
-            playerId: id, 
-            health: 100,
-            type: "respawn"
-        } 
-    }));
-    
-    // Remove death visual effects
-    const playerDiv = players[id];
-    if (playerDiv) {
-        playerDiv.style.opacity = "1";
-        playerDiv.title = "";
-        // Remove respawn button
-        const respawnBtn = playerDiv.querySelector('button[style*="44ff44"]');
-        if (respawnBtn) {
-            respawnBtn.remove();
-        }
-    }
-    
-    console.log(`✅ Player ${id} respawned with full health`);
-}
 
 function checkCollisionWithPlayer(player, x, y) {
     const px = parseInt(player.style.left);
