@@ -75,16 +75,9 @@ socket.onmessage = (event) => {
                         playerPositions[msg.data.id].targetX = msg.data.x;
                         playerPositions[msg.data.id].targetY = msg.data.y;
                     } else {
-                        // For own player, only apply small corrections to prevent desync
-                        const pos = playerPositions[msg.data.id];
-                        const diffX = Math.abs(pos.targetX - msg.data.x);
-                        const diffY = Math.abs(pos.targetY - msg.data.y);
-                        
-                        // Only apply server correction if difference is significant (anti-rubber band)
-                        if (diffX > 30 || diffY > 30) {
-                            pos.targetX = msg.data.x;
-                            pos.targetY = msg.data.y;
-                        }
+                        // For own player, ignore server updates to prevent rubber-banding
+                        // Client-side prediction takes priority for controlled player
+                        console.log(`Ignoring server position update for controlled player ${myId}`);
                     }
                 }
             }
@@ -667,7 +660,7 @@ function controlPlayer(id) {
 let keysPressed = {};
 let moveSpeed = 8;
 let lastMoveTime = 0;
-let moveThrottleMs = 50; // Balanced for network efficiency while maintaining smoothness
+let moveThrottleMs = 100; // Increased throttling to reduce network load on deployed version
 
 window.addEventListener("keydown", (e) => {
     if (myId == null) return;
@@ -713,6 +706,8 @@ function handleMovement() {
         // Update client position immediately for smooth movement
         pos.targetX = newX;
         pos.targetY = newY;
+        pos.currentX = newX; // Also update current position to prevent interpolation lag
+        pos.currentY = newY;
         
         // Send to server with throttling to reduce network traffic
         if (now - lastMoveTime >= moveThrottleMs) {
@@ -961,13 +956,22 @@ function animatePlayer(id) {
     const pos = playerPositions[id];
     if (!div || !pos) return;
 
-    const lerpFactor = 0.15;
-    
-    pos.currentX += (pos.targetX - pos.currentX) * lerpFactor;
-    pos.currentY += (pos.targetY - pos.currentY) * lerpFactor;
+    // For controlled player, use direct positioning to avoid lag
+    if (parseInt(id) === myId) {
+        div.style.left = Math.round(pos.targetX) + "px";
+        div.style.top = Math.round(pos.targetY) + "px";
+        pos.currentX = pos.targetX;
+        pos.currentY = pos.targetY;
+    } else {
+        // For other players, use smooth interpolation
+        const lerpFactor = 0.15;
+        
+        pos.currentX += (pos.targetX - pos.currentX) * lerpFactor;
+        pos.currentY += (pos.targetY - pos.currentY) * lerpFactor;
 
-    div.style.left = Math.round(pos.currentX) + "px";
-    div.style.top = Math.round(pos.currentY) + "px";
+        div.style.left = Math.round(pos.currentX) + "px";
+        div.style.top = Math.round(pos.currentY) + "px";
+    }
 }
 
 function gameLoop() {
