@@ -43,6 +43,14 @@ func databaseChanges(db *sql.DB) error {
 			image TEXT NOT NULL  -- optional: can hold base64 or other encoding of full image
 		);
 
+		-- Add account_id column to player table if it doesn't exist
+		DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+						   WHERE table_name = 'player' AND column_name = 'account_id') THEN
+				ALTER TABLE player ADD COLUMN account_id INT REFERENCES account(id);
+			END IF;
+		END $$;
+
 		-- Add foreign key constraint for account's last_player_id (if not exists)
 		DO $$ BEGIN
 			IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'account_last_player_fkey') THEN

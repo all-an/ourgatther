@@ -146,23 +146,40 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			name := data["name"].(string)
 			accountID := int(data["accountId"].(float64))
 			
-			color := []string{
+			log.Printf("👤 Creating player: name='%s', accountId=%d", name, accountID)
+			
+			colors := []string{
 				"teal", "tomato", "orange", "green", "gold", "pink",
 				"cyan", "magenta", "lime", "coral", "brown", "orchid",
-				"lightblue", "lightgreen", "khaki", "peachpuff", "lavender"}[rand.Intn(18)]
+				"lightblue", "lightgreen", "khaki", "peachpuff", "lavender"}
+			color := colors[rand.Intn(len(colors))]
 
 			x := rand.Intn(800)
 			y := rand.Intn(600)
 			var id int
-			h.db.QueryRow("INSERT INTO player (name, x, y, color, account_id) VALUES ($1, $2, $3, $4, $5) RETURNING id", 
-				name, x, y, color, accountID).Scan(&id)
+			
+			err := h.db.QueryRow("INSERT INTO player (name, x, y, color) VALUES ($1, $2, $3, $4) RETURNING id", 
+				name, x, y, color).Scan(&id)
+			if err != nil {
+				log.Printf("❌ Error creating player: %v", err)
+				continue
+			}
+			
+			log.Printf("✅ Player created successfully: id=%d, name='%s', position=(%d,%d)", id, name, x, y)
 			
 			// Update account's last_player_id
-			h.db.Exec("UPDATE account SET last_player_id = $1 WHERE id = $2", id, accountID)
+			_, err = h.db.Exec("UPDATE account SET last_player_id = $1 WHERE id = $2", id, accountID)
+			if err != nil {
+				log.Printf("❌ Error updating account last_player_id: %v", err)
+			} else {
+				log.Printf("✅ Updated account %d last_player_id to %d", accountID, id)
+			}
 			
 			player := Player{ID: id, Name: name, X: x, Y: y, Color: color}
 			client.send <- WSMessage{Type: "created", Data: player}
 			h.Broadcast(WSMessage{Type: "new_player", Data: player})
+			
+			log.Printf("📤 Sent player creation messages for player %d", id)
 		case "change_name":
 			data := req.Data.(map[string]interface{})
 			id := int(data["id"].(float64))
@@ -170,9 +187,11 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			_, _ = h.db.Exec("UPDATE player SET name = $1 WHERE id = $2", name, id)
 			h.Broadcast(WSMessage{Type: "name_changed", Data: map[string]interface{}{"id": id, "name": name}})
 		case "get_players":
+			log.Printf("📋 Getting all players from database")
+			
 			rows, err := h.db.Query("SELECT id, name, x, y, color FROM player")
 			if err != nil {
-				log.Println("db query error:", err)
+				log.Println("❌ db query error:", err)
 				continue
 			}
 			defer rows.Close()
@@ -181,21 +200,54 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			for rows.Next() {
 				var c Player
 				if err := rows.Scan(&c.ID, &c.Name, &c.X, &c.Y, &c.Color); err != nil {
-					log.Println("db scan error:", err)
+					log.Println("❌ db scan error:", err)
 					continue
 				}
 				chars = append(chars, c)
 			}
+			
+			log.Printf("📋 Found %d players in database: %v", len(chars), func() []int {
+				ids := make([]int, len(chars))
+				for i, p := range chars {
+					ids[i] = p.ID
+				}
+				return ids
+			}())
+			
 			client.send <- WSMessage{Type: "players", Data: chars}
 		case "control_player":
 			data := req.Data.(map[string]interface{})
 			playerID := int(data["playerId"].(float64))
 			accountID := int(data["accountId"].(float64))
 			
-			// Update account's last controlled player
-			_, err := h.db.Exec("UPDATE account SET last_player_id = $1 WHERE id = $2", playerID, accountID)
+			log.Printf("🎮 control_player: account %d trying to control player %d", accountID, playerID)
+			
+			// Check if player exists before updating foreign key
+			var exists bool
+			err := h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM player WHERE id = $1)", playerID).Scan(&exists)
 			if err != nil {
-				log.Println("error updating last player:", err)
+				log.Printf("❌ Error checking if player %d exists: %v", playerID, err)
+				continue
+			}
+			
+			if !exists {
+				log.Printf("❌ Cannot set last_player_id to %d - player does not exist in database", playerID)
+				// Set last_player_id to NULL instead of non-existent player
+				_, err = h.db.Exec("UPDATE account SET last_player_id = NULL WHERE id = $1", accountID)
+				if err != nil {
+					log.Printf("❌ Error setting last_player_id to NULL for account %d: %v", accountID, err)
+				} else {
+					log.Printf("✅ Set last_player_id to NULL for account %d", accountID)
+				}
+				continue
+			}
+			
+			// Update account's last controlled player
+			_, err = h.db.Exec("UPDATE account SET last_player_id = $1 WHERE id = $2", playerID, accountID)
+			if err != nil {
+				log.Printf("❌ Error updating last player: account=%d, player=%d, error=%v", accountID, playerID, err)
+			} else {
+				log.Printf("✅ Successfully updated account %d last_player_id to %d", accountID, playerID)
 			}
 			
 		case "save_drawing":
@@ -211,36 +263,62 @@ func (h *Hub) WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 		case "delete_player":
 			data := req.Data.(map[string]interface{})
 			id := int(data["id"].(float64))
-
-			tx, err := h.db.Begin()
-			if err != nil {
-				log.Println("error starting transaction:", err)
-				continue
-			}
-
-			_, err = tx.Exec("DELETE FROM drawing WHERE player_id = $1", id)
-			if err != nil {
-				tx.Rollback()
-				log.Println("error deleting drawings:", err)
-				continue
-			}
-
-			_, err = tx.Exec("DELETE FROM player WHERE id = $1", id)
-			if err != nil {
-				tx.Rollback()
-				log.Println("error deleting player:", err)
-				continue
-			}
-
-			err = tx.Commit()
-			if err != nil {
-				log.Println("error committing transaction:", err)
-				continue
-			}
-
+			
+			log.Printf("🚫 BLOCKED: Attempted to delete player %d from database (now disabled for persistence)", id)
+			
+			// Instead of deleting, just broadcast that the player is "removed" from active state
+			// but keep them in the database for re-login
 			h.Broadcast(WSMessage{
 				Type: "player_deleted",
 				Data: map[string]interface{}{"id": id},
+			})
+
+		case "health_change":
+			data := req.Data.(map[string]interface{})
+			playerId := int(data["playerId"].(float64))
+			newHealth := int(data["health"].(float64))
+			changeType := data["type"].(string) // "damage" or "heal"
+			
+			// Broadcast health change to all clients
+			h.Broadcast(WSMessage{
+				Type: "health_change",
+				Data: map[string]interface{}{
+					"playerId": playerId,
+					"health": newHealth,
+					"type": changeType,
+				},
+			})
+
+		case "spawn_bullet":
+			data := req.Data.(map[string]interface{})
+			fromId := int(data["fromId"].(float64))
+			targetX := data["targetX"].(float64)
+			targetY := data["targetY"].(float64)
+			
+			// Broadcast bullet spawn to all clients
+			h.Broadcast(WSMessage{
+				Type: "spawn_bullet",
+				Data: map[string]interface{}{
+					"fromId": fromId,
+					"targetX": targetX,
+					"targetY": targetY,
+				},
+			})
+
+		case "spawn_medkit":
+			data := req.Data.(map[string]interface{})
+			fromId := int(data["fromId"].(float64))
+			targetX := data["targetX"].(float64)
+			targetY := data["targetY"].(float64)
+			
+			// Broadcast med kit spawn to all clients
+			h.Broadcast(WSMessage{
+				Type: "spawn_medkit",
+				Data: map[string]interface{}{
+					"fromId": fromId,
+					"targetX": targetX,
+					"targetY": targetY,
+				},
 			})
 
 		}

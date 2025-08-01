@@ -49,10 +49,20 @@ let players = {};
 let myId = null;
 let playerPositions = {};
 
+// Debug function to check current state
+window.debugPlayerState = function() {
+    console.log(`🔍 Current state:`);
+    console.log(`  myId: ${myId} (${typeof myId})`);
+    console.log(`  players:`, Object.keys(players).map(id => `${id} (${typeof id})`));
+    console.log(`  gunMode: ${gunMode}, gunModePlayerId: ${gunModePlayerId}`);
+    console.log(`  medMode: ${medMode}, medModePlayerId: ${medModePlayerId}`);
+};
+
 socket.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     switch (msg.type) {
         case "players":
+        console.log(`📥 Received ${msg.data.length} players:`, msg.data);
         msg.data.forEach(drawPlayer);
         break;
         case "new_player":
@@ -90,11 +100,47 @@ socket.onmessage = (event) => {
             break;
         case "created":
             myId = msg.data.id;
+            console.log(`🎮 Player created: Setting myId to ${myId}`);
             drawPlayer(msg.data);
             controlPlayer(myId);
             break;
         case "player_deleted":
             removePlayer(msg.data.id);
+            break;
+        case "health_change":
+            const playerId = msg.data.playerId;
+            const newHealth = msg.data.health;
+            const changeType = msg.data.type;
+            
+            console.log(`📥 WebSocket health_change: Player ${playerId} -> ${newHealth}% (${changeType}), current: ${playerHealth[playerId]}`);
+            
+            // Update health locally for all clients
+            if (playerHealth[playerId] !== undefined) {
+                const oldHealth = playerHealth[playerId];
+                playerHealth[playerId] = newHealth;
+                updateHealthBar(playerId);
+                console.log(`🔄 Health updated: Player ${playerId}: ${oldHealth} -> ${newHealth}% (${changeType})`);
+            } else {
+                console.warn(`❌ Cannot update health for unknown player ${playerId}`);
+            }
+            break;
+        case "spawn_bullet":
+            const bulletFromId = msg.data.fromId;
+            const bulletTargetX = msg.data.targetX;
+            const bulletTargetY = msg.data.targetY;
+            
+            // Spawn bullet for all clients
+            console.log(`🔄 Received bullet spawn from player ${bulletFromId}`);
+            spawnDirectionalBullet(bulletFromId, bulletTargetX, bulletTargetY, true);
+            break;
+        case "spawn_medkit":
+            const medkitFromId = msg.data.fromId;
+            const medkitTargetX = msg.data.targetX;
+            const medkitTargetY = msg.data.targetY;
+            
+            // Spawn med kit for all clients
+            console.log(`🔄 Received med kit spawn from player ${medkitFromId}`);
+            spawnDirectionalMedKit(medkitFromId, medkitTargetX, medkitTargetY, true);
             break;
 
     }
@@ -188,7 +234,12 @@ function createPlayer() {
 }
 
 function drawPlayer(c) {
-    if (players[c.id]) return;
+    if (players[c.id]) {
+        console.log(`Player ${c.id} (${c.name}) already exists, skipping draw`);
+        return;
+    }
+    
+    console.log(`🎨 Drawing player ${c.id} (${typeof c.id}) (${c.name}) at (${c.x}, ${c.y}), myId=${myId} (${typeof myId})`);
 
     const div = document.createElement("div");
     div.className = "player";
@@ -216,29 +267,40 @@ function drawPlayer(c) {
         targetY: c.y
     };
 
-    if (!playerHealth[c.id]) playerHealth[c.id] = 100;
+    // Initialize health if not already set
+    if (playerHealth[c.id] === undefined) {
+        playerHealth[c.id] = 100;
+    }
     updateHealthBar(c.id);
     
     // Update visual indicators for all players
     updatePlayerControlVisuals();
     
     // Check if this is the player we're waiting to auto-control
-    if (window.pendingAutoControl && c.id === window.pendingAutoControl.id) {
-        // Position camera immediately to this player
-        if (typeof setCameraImmediately === 'function') {
-            setCameraImmediately(c.x, c.y);
+    if (window.pendingAutoControl) {
+        console.log(`🔍 Checking auto-control: pendingId=${window.pendingAutoControl.id}, currentId=${c.id}, match=${c.id === window.pendingAutoControl.id}`);
+        
+        if (c.id === window.pendingAutoControl.id) {
+            console.log(`🎯 Found pending auto-control player: ${c.name} (${c.id})`);
+            
+            // Position camera immediately to this player
+            if (typeof setCameraImmediately === 'function') {
+                setCameraImmediately(c.x, c.y);
+                console.log(`📹 Camera positioned to controlled player: ${c.name} at (${c.x}, ${c.y})`);
+            }
+            
+            // Update the auto-control info
+            const autoControlInfo = document.getElementById('auto-control-info');
+            if (autoControlInfo) {
+                autoControlInfo.innerHTML = `<i style="color: #000980ff;">✓ Controlling: ${c.name}</i>`;
+            }
+            
+            // Clear pending state
+            window.pendingAutoControl = null;
+            console.log(`🎯 Auto-control completed for player ${c.name}`);
         }
-        
-        // Update the auto-control info
-        const autoControlInfo = document.getElementById('auto-control-info');
-        if (autoControlInfo) {
-            autoControlInfo.innerHTML = `<i style="color: #000980ff;">✓ Controlling: ${c.name}</i>`;
-        }
-        
-        // Clear pending state
-        window.pendingAutoControl = null;
-        
-        console.log(`Camera positioned to controlled player: ${c.name} at (${c.x}, ${c.y})`);
+    } else {
+        console.log(`🔍 No pending auto-control for player ${c.id} (${c.name})`);
     }
 }
 
@@ -250,9 +312,11 @@ let medMode = false;
 let medModePlayerId = null;
 
 function toggleGunMode(id) {
-    // Only allow gun mode on controlled player
-    if (myId !== id) {
-        alert('You can only enable gun mode for the player you are controlling!');
+    console.log(`🔫 toggleGunMode called: id=${id} (${typeof id}), myId=${myId} (${typeof myId}), equal=${myId === id}, loose equal=${myId == id}`);
+    
+    // Only allow gun mode on controlled player - use loose equality to handle string/number mismatch
+    if (myId != id) {
+        alert(`You can only enable gun mode for the player you are controlling! (myId: ${myId}, clicked: ${id})`);
         return;
     }
     
@@ -281,20 +345,22 @@ function toggleGunMode(id) {
         gunBtn.textContent = "Exit Gun Mode";
         gunBtn.style.backgroundColor = "#ff6666";
         document.body.style.cursor = "crosshair";
-        console.log(`Gun mode enabled for player ${id}`);
+        console.log(`Gun mode enabled for player ${id}, gunModePlayerId set to: ${gunModePlayerId} (${typeof gunModePlayerId})`);
     } else {
         gunModePlayerId = null;
         gunBtn.textContent = "Gun Mode";
         gunBtn.style.backgroundColor = "";
         document.body.style.cursor = "default";
-        console.log(`Gun mode disabled for player ${id}`);
+        console.log(`Gun mode disabled for player ${id}, gunModePlayerId set to: ${gunModePlayerId}`);
     }
 }
 
 function toggleMedMode(id) {
-    // Only allow med mode on controlled player
-    if (myId !== id) {
-        alert('You can only enable med mode for the player you are controlling!');
+    console.log(`💊 toggleMedMode called: id=${id} (${typeof id}), myId=${myId} (${typeof myId}), equal=${myId === id}, loose equal=${myId == id}`);
+    
+    // Only allow med mode on controlled player - use loose equality to handle string/number mismatch
+    if (myId != id) {
+        alert(`You can only enable med mode for the player you are controlling! (myId: ${myId}, clicked: ${id})`);
         return;
     }
     
@@ -341,6 +407,7 @@ window.changeName = changeName;
 window.scrollBackgroundTo = scrollBackgroundTo;
 window.updateUIBasedOnControl = updateUIBasedOnControl;
 window.setCameraImmediately = setCameraImmediately;
+window.respawnPlayer = respawnPlayer;
 
 function updatePlayerControlVisuals() {
     // Update visual indicators for all players
@@ -365,43 +432,77 @@ window.updatePlayerControlVisuals = updatePlayerControlVisuals;
 
 // Mouse click event handler for gun mode and med mode
 document.addEventListener('click', function(e) {
-    if (!gunMode && !medMode) return;
-    if (!gunModePlayerId && !medModePlayerId) return;
+    console.log(`🖱️ Click detected: gunMode=${gunMode}, medMode=${medMode}, gunModePlayerId=${gunModePlayerId}, medModePlayerId=${medModePlayerId}`);
+    
+    if (!gunMode && !medMode) {
+        console.log(`🖱️ Click ignored: no active mode`);
+        return;
+    }
+    if (gunModePlayerId === null && medModePlayerId === null) {
+        console.log(`🖱️ Click ignored: no active player ID`);
+        return;
+    }
     
     // Allow clicking the respective mode buttons to disable modes
     if (gunMode) {
         const gunButton = document.getElementById(`gun-${gunModePlayerId}`);
+        console.log(`🎯 Gun mode active - checking if clicked gun button. Target: ${e.target.tagName}#${e.target.id}, Gun button: ${gunButton ? gunButton.id : 'null'}, Match: ${e.target === gunButton}`);
         if (e.target === gunButton) {
+            console.log(`🎯 Clicked gun button - letting toggle function handle this`);
             return; // Let the gun mode toggle function handle this
         }
     }
     
     if (medMode) {
         const medButton = document.getElementById(`med-${medModePlayerId}`);
+        console.log(`💊 Med mode active - checking if clicked med button. Target: ${e.target.tagName}#${e.target.id}, Med button: ${medButton ? medButton.id : 'null'}, Match: ${e.target === medButton}`);
         if (e.target === medButton) {
+            console.log(`💊 Clicked med button - letting toggle function handle this`);
             return; // Let the med mode toggle function handle this
         }
     }
     
     // In either mode, ALL other clicks perform the respective action
     // Prevent default behavior and stop event propagation
+    console.log(`✅ Processing click for shooting/healing`);
     e.preventDefault();
     e.stopPropagation();
     
     // Calculate world coordinates accounting for camera offset
     const worldX = e.clientX + cameraOffsetX;
     const worldY = e.clientY + cameraOffsetY;
+    console.log(`🎯 World coordinates: (${worldX}, ${worldY}), camera offset: (${cameraOffsetX}, ${cameraOffsetY})`);
     
-    if (gunMode && gunModePlayerId) {
-        console.log(`Gun mode: Shooting from player ${gunModePlayerId} to world coordinates (${worldX}, ${worldY})`);
-        spawnDirectionalBullet(gunModePlayerId, worldX, worldY);
-    } else if (medMode && medModePlayerId) {
-        console.log(`Med mode: Launching med kit from player ${medModePlayerId} to world coordinates (${worldX}, ${worldY})`);
-        spawnDirectionalMedKit(medModePlayerId, worldX, worldY);
+    if (gunMode && gunModePlayerId !== null) {
+        console.log(`🔫 Gun mode: Shooting from player ${gunModePlayerId} to world coordinates (${worldX}, ${worldY})`);
+        console.log(`📤 Sending bullet spawn WebSocket message`);
+        // Send bullet spawn to server for synchronization
+        socket.send(JSON.stringify({ 
+            type: "spawn_bullet", 
+            data: { 
+                fromId: gunModePlayerId, 
+                targetX: worldX, 
+                targetY: worldY 
+            } 
+        }));
+    } else if (medMode && medModePlayerId !== null) {
+        console.log(`💊 Med mode: Launching med kit from player ${medModePlayerId} to world coordinates (${worldX}, ${worldY})`);
+        console.log(`📤 Sending med kit spawn WebSocket message`);
+        // Send med kit spawn to server for synchronization
+        socket.send(JSON.stringify({ 
+            type: "spawn_medkit", 
+            data: { 
+                fromId: medModePlayerId, 
+                targetX: worldX, 
+                targetY: worldY 
+            } 
+        }));
+    } else {
+        console.log(`🖱️ Click ignored: gunMode=${gunMode}, gunModePlayerId=${gunModePlayerId}, medMode=${medMode}, medModePlayerId=${medModePlayerId}`);
     }
 }, true); // Use capture phase to intercept all clicks
 
-function spawnDirectionalBullet(fromId, targetX, targetY) {
+function spawnDirectionalBullet(fromId, targetX, targetY, fromWebSocket = false) {
     const from = players[fromId];
     if (!from) {
         console.warn(`Cannot spawn bullet: player ${fromId} not found`);
@@ -420,7 +521,7 @@ function spawnDirectionalBullet(fromId, targetX, targetY) {
     bullet.style.top = startY + "px";
 
     document.getElementById("game").appendChild(bullet);
-    console.log(`Bullet spawned: (${startX},${startY}) → (${targetX},${targetY})`);
+    console.log(`Bullet spawned: (${startX},${startY}) → (${targetX},${targetY}) ${fromWebSocket ? '[WebSocket]' : '[Local]'}`);
 
     let x = startX;
     let y = startY;
@@ -443,7 +544,7 @@ function spawnDirectionalBullet(fromId, targetX, targetY) {
         bullet.style.top = y + "px";
         stepCount++;
 
-        // Check collision with all players
+        // Check collision with all players (only apply damage if not from WebSocket or if we're the shooter)
         let hit = false;
         Object.keys(players).forEach(playerId => {
             if (parseInt(playerId) === fromId) return; // Don't hit self
@@ -456,7 +557,14 @@ function spawnDirectionalBullet(fromId, targetX, targetY) {
                 
                 if (distToPlayer < 30 && !hit) {
                     console.log(`🎯 Directional bullet hit player ${playerId}! Distance: ${distToPlayer.toFixed(1)}px`);
-                    applyDamage(parseInt(playerId));
+                    console.log(`🎯 Collision check: fromWebSocket=${fromWebSocket}, fromId=${fromId}, myId=${myId}, shouldApplyDamage=${!fromWebSocket || fromId === myId}`);
+                    // Only the original shooter applies damage to prevent duplicates
+                    if (!fromWebSocket || fromId === myId) {
+                        console.log(`🎯 Applying damage from ${fromWebSocket ? 'WebSocket' : 'local'} bullet`);
+                        applyDamage(parseInt(playerId));
+                    } else {
+                        console.log(`🎯 Skipping damage - not the original shooter`);
+                    }
                     hit = true;
                 }
             }
@@ -477,7 +585,7 @@ function spawnDirectionalBullet(fromId, targetX, targetY) {
     }, 16); // Same update rate as other bullets
 }
 
-function spawnDirectionalMedKit(fromId, targetX, targetY) {
+function spawnDirectionalMedKit(fromId, targetX, targetY, fromWebSocket = false) {
     const from = players[fromId];
     if (!from) {
         console.warn(`Cannot spawn med kit: player ${fromId} not found`);
@@ -496,7 +604,7 @@ function spawnDirectionalMedKit(fromId, targetX, targetY) {
     medkit.style.top = startY + "px";
 
     document.getElementById("game").appendChild(medkit);
-    console.log(`Med kit spawned: (${startX},${startY}) → (${targetX},${targetY})`);
+    console.log(`Med kit spawned: (${startX},${startY}) → (${targetX},${targetY}) ${fromWebSocket ? '[WebSocket]' : '[Local]'}`);
 
     let x = startX;
     let y = startY;
@@ -519,7 +627,7 @@ function spawnDirectionalMedKit(fromId, targetX, targetY) {
         medkit.style.top = y + "px";
         stepCount++;
 
-        // Check collision with all players
+        // Check collision with all players (only apply healing if not from WebSocket or if we're the medic)
         let hit = false;
         Object.keys(players).forEach(playerId => {
             if (parseInt(playerId) === fromId) return; // Don't heal self
@@ -532,7 +640,14 @@ function spawnDirectionalMedKit(fromId, targetX, targetY) {
                 
                 if (distToPlayer < 30 && !hit) {
                     console.log(`💊 Med kit hit player ${playerId}! Distance: ${distToPlayer.toFixed(1)}px`);
-                    applyHealing(parseInt(playerId));
+                    console.log(`💊 Collision check: fromWebSocket=${fromWebSocket}, fromId=${fromId}, myId=${myId}, shouldApplyHealing=${!fromWebSocket || fromId === myId}`);
+                    // Only the original medic applies healing to prevent duplicates
+                    if (!fromWebSocket || fromId === myId) {
+                        console.log(`💊 Applying healing from ${fromWebSocket ? 'WebSocket' : 'local'} med kit`);
+                        applyHealing(parseInt(playerId));
+                    } else {
+                        console.log(`💊 Skipping healing - not the original medic`);
+                    }
                     hit = true;
                 }
             }
@@ -562,18 +677,22 @@ function removePlayer(id) {
 }
 
 function updateHealthBar(id) {
+    console.log(`🩸 updateHealthBar called: Player ${id}, health: ${playerHealth[id]}%`);
     const healthBar = document.getElementById(`health-${id}`);
     const bar = healthBar?.querySelector(".health-fill");
+    
     if (bar && playerHealth[id] !== undefined) {
+        const oldWidth = bar.style.width;
         // Use setProperty with important to override CSS !important
         bar.style.setProperty('width', `${playerHealth[id]}%`, 'important');
-        console.log(`Health bar updated for player ${id}: ${playerHealth[id]}% (actual width: ${bar.style.width})`);
+        const newWidth = bar.style.width;
+        console.log(`🩸 Health bar updated: Player ${id}: ${oldWidth} -> ${newWidth} (health: ${playerHealth[id]}%)`);
         
         // Also log the computed style to verify
         const computedStyle = window.getComputedStyle(bar);
-        console.log(`Computed width: ${computedStyle.width}`);
+        console.log(`🩸 Computed width: ${computedStyle.width}`);
     } else {
-        console.warn(`Health bar update failed for player ${id}:`, {
+        console.warn(`❌ Health bar update failed for player ${id}:`, {
             healthBar: !!healthBar,
             bar: !!bar,
             health: playerHealth[id]
@@ -582,15 +701,17 @@ function updateHealthBar(id) {
 }
 
 function changeName(id) {
+    console.log(`✏️ changeName called: id=${id} (${typeof id}), myId=${myId} (${typeof myId}), equal=${myId === id}, loose equal=${myId == id}`);
+    
     // Check if gun mode is active
     if (gunMode) {
         alert('Cannot change names while in gun mode. Exit gun mode first.');
         return;
     }
     
-    // Only allow changing name of controlled player
-    if (myId !== id) {
-        alert('You can only change the name of the player you are controlling!');
+    // Only allow changing name of controlled player - use loose equality to handle string/number mismatch
+    if (myId != id) {
+        alert(`You can only change the name of the player you are controlling! (myId: ${myId}, clicked: ${id})`);
         return;
     }
     
@@ -635,6 +756,7 @@ function controlPlayer(id) {
     }
     
     myId = id;
+    console.log(`🎮 controlPlayer: Setting myId to ${id}`);
     updateUIBasedOnControl();
     const div = players[id];
     const name = div?.querySelector('.player-name')?.textContent || 'Unknown';
@@ -899,18 +1021,32 @@ function spawnBullet(fromId, toId) {
     }, 16); // Faster update rate for smoother bullets
 }
 function applyDamage(id) {
-    console.log(`Applying damage to player ${id}, current health: ${playerHealth[id]}`);
-    if (!playerHealth[id]) {
-        console.warn(`No health found for player ${id}`);
+    console.log(`💥 applyDamage called: Player ${id}, current health: ${playerHealth[id]}`);
+    if (playerHealth[id] === undefined) {
+        console.warn(`❌ No health found for player ${id}`);
         return;
     }
 
+    const oldHealth = playerHealth[id];
     playerHealth[id] -= 10;
-    console.log(`Player ${id} health after damage: ${playerHealth[id]}`);
+    console.log(`💥 Damage applied: Player ${id}: ${oldHealth} -> ${playerHealth[id]}`);
+    
+    // Send health change to server for synchronization
+    console.log(`📤 Sending damage WebSocket message for player ${id}`);
+    socket.send(JSON.stringify({ 
+        type: "health_change", 
+        data: { 
+            playerId: id, 
+            health: playerHealth[id],
+            type: "damage"
+        } 
+    }));
     
     if (playerHealth[id] <= 0) {
         playerHealth[id] = 0;
         updateHealthBar(id);
+        
+        console.log(`💀 Player ${id} has died but will remain in database for respawn`);
         
         // Disable gun mode if the dying player was in gun mode
         if (gunMode && gunModePlayerId === id) {
@@ -920,27 +1056,99 @@ function applyDamage(id) {
             console.log(`Gun mode disabled due to player ${id} death`);
         }
         
-        removePlayer(id);
-        socket.send(JSON.stringify({ type: "delete_player", data: { id } }));
+        // Don't delete the player from database - just mark as dead
+        // Players should persist for re-login auto-control
+        const playerDiv = players[id];
+        if (playerDiv) {
+            playerDiv.style.opacity = "0.5"; // Visual indicator of death
+            playerDiv.title = "This player is dead";
+            
+            // Add respawn button if this is the controlled player
+            if (id === myId) {
+                const respawnBtn = document.createElement("button");
+                respawnBtn.className = "player-btn";
+                respawnBtn.textContent = "Respawn";
+                respawnBtn.style.backgroundColor = "#44ff44";
+                respawnBtn.onclick = () => respawnPlayer(id);
+                playerDiv.appendChild(respawnBtn);
+            }
+        }
     } else {
         updateHealthBar(id);
     }
 }
 
 function applyHealing(id) {
-    console.log(`Applying healing to player ${id}, current health: ${playerHealth[id]}`);
-    if (!playerHealth[id]) {
-        console.warn(`No health found for player ${id}`);
+    console.log(`💚 applyHealing called: Player ${id}, current health: ${playerHealth[id]}`);
+    if (playerHealth[id] === undefined) {
+        console.warn(`❌ No health found for player ${id}`);
         return;
     }
 
+    const oldHealth = playerHealth[id];
     playerHealth[id] += 15; // Heal for 15 points
     if (playerHealth[id] > 100) {
         playerHealth[id] = 100; // Cap at 100
     }
     
-    console.log(`Player ${id} health after healing: ${playerHealth[id]}`);
+    console.log(`💚 Healing applied: Player ${id}: ${oldHealth} -> ${playerHealth[id]}`);
+    
+    // Send health change to server for synchronization
+    console.log(`📤 Sending healing WebSocket message for player ${id}`);
+    socket.send(JSON.stringify({ 
+        type: "health_change", 
+        data: { 
+            playerId: id, 
+            health: playerHealth[id],
+            type: "heal"
+        } 
+    }));
+    
     updateHealthBar(id);
+    
+    // Remove death visual effects if player was dead
+    const playerDiv = players[id];
+    if (playerDiv && playerDiv.style.opacity === "0.5") {
+        playerDiv.style.opacity = "1";
+        playerDiv.title = "";
+        // Remove respawn button if it exists
+        const respawnBtn = playerDiv.querySelector('button[style*="44ff44"]');
+        if (respawnBtn) {
+            respawnBtn.remove();
+        }
+    }
+}
+
+function respawnPlayer(id) {
+    console.log(`🔄 Respawning player ${id}`);
+    
+    // Reset health to full
+    playerHealth[id] = 100;
+    updateHealthBar(id);
+    
+    // Send health change to server
+    socket.send(JSON.stringify({ 
+        type: "health_change", 
+        data: { 
+            playerId: id, 
+            health: 100,
+            type: "respawn"
+        } 
+    }));
+    
+    // Remove death visual effects
+    const playerDiv = players[id];
+    if (playerDiv) {
+        playerDiv.style.opacity = "1";
+        playerDiv.title = "";
+        // Remove respawn button
+        const respawnBtn = playerDiv.querySelector('button[style*="44ff44"]');
+        if (respawnBtn) {
+            respawnBtn.remove();
+        }
+    }
+    
+    console.log(`✅ Player ${id} respawned with full health`);
 }
 
 function checkCollisionWithPlayer(player, x, y) {

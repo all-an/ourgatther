@@ -36,10 +36,15 @@
     <script>
         // Authentication check and auto-control last player
         document.addEventListener('DOMContentLoaded', async function() {
+            console.log(`🔍 DOMContentLoaded fired - starting authentication check`);
+            
             const accountId = localStorage.getItem('accountId');
             const username = localStorage.getItem('username');
             
+            console.log(`🔍 localStorage check: accountId=${accountId}, username=${username}`);
+            
             if (!accountId) {
+                console.log(`🔍 No accountId found - redirecting to login`);
                 alert('You must be logged in to access this page. Redirecting to login...');
                 window.location.href = '/';
                 return;
@@ -55,18 +60,24 @@
 
             // Fetch account info and set up auto-control immediately
             try {
+                console.log(`🔍 Fetching account info for accountId: ${accountId}`);
                 const response = await fetch(`/account-info?accountId=${accountId}`);
+                console.log(`🔍 Account info response status: ${response.status}`);
+                
                 if (response.ok) {
                     const data = await response.json();
+                    console.log(`🔍 Account info data:`, data);
+                    
                     if (data.lastPlayer) {
                         // Set control immediately without waiting
                         myId = data.lastPlayer.id;
+                        console.log(`🎮 Auto-control: Setting myId to ${myId} for player: ${data.lastPlayer.name}`);
                         updateUIBasedOnControl();
                         
                         // Store player info for when they appear
                         window.pendingAutoControl = data.lastPlayer;
                         
-                        console.log(`Auto-controlling player: ${data.lastPlayer.name} (ID: ${data.lastPlayer.id})`);
+                        console.log(`🔍 Auto-controlling player: ${data.lastPlayer.name} (ID: ${data.lastPlayer.id}) at (${data.lastPlayer.x}, ${data.lastPlayer.y})`);
                         
                         // Show immediate feedback to user
                         const controls = document.getElementById('controls');
@@ -76,10 +87,14 @@
                             autoControlInfo.innerHTML = `<i style="color: #0066cc;">Controlling: ${data.lastPlayer.name}</i>`;
                             controls.appendChild(autoControlInfo);
                         }
+                    } else {
+                        console.log('🔍 No previous player found for auto-control');
                     }
+                } else {
+                    console.error(`🔍 Failed to fetch account info: ${response.status} ${response.statusText}`);
                 }
             } catch (error) {
-                console.error('Failed to fetch account info:', error);
+                console.error('🔍 Failed to fetch account info:', error);
             }
         });
 
